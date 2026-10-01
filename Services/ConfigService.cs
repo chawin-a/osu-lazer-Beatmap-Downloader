@@ -22,6 +22,7 @@ public static class ConfigService
         string clientSecret = "";
 
         string songsPath = "";
+        string osuLazerExe = "";
 
         int fetchCount = 500;
         int downloadThreads = 5;
@@ -157,6 +158,10 @@ public static class ConfigService
                     songsPath = normalValue;
                     break;
 
+                case "osu_lazer_exe":
+                    osuLazerExe = normalValue;
+                    break;
+
                 case "fetch_count":
                     if (int.TryParse(
                             normalValue,
@@ -210,6 +215,13 @@ public static class ConfigService
                 "songs_path is missing.");
         }
 
+        if (string.IsNullOrWhiteSpace(
+                osuLazerExe))
+        {
+            throw new Exception(
+                "osu_lazer_exe is missing.");
+        }
+
         if (mirrors.Count == 0)
         {
             mirrors.Add("beatconnect");
@@ -226,6 +238,7 @@ public static class ConfigService
             fetchCount,
             downloadThreads,
             songsPath,
+            osuLazerExe,
             mirrors,
             servers);
     }

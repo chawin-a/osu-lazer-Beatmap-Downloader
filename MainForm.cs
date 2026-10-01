@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+using System.Diagnostics;
 using LazerBeatmapLister.Api;
 using LazerBeatmapLister.Models;
 using LazerBeatmapLister.Realm;
@@ -77,6 +77,13 @@ public class MainForm : Form
         Enabled = false
     };
 
+    private readonly Button importNewSongsBtn = new()
+    {
+        Text = "Import New Songs (50/batch)",
+        AutoSize = true,
+        Enabled = false
+    };
+
     private readonly NumericUpDown fetchCount = new()
     {
         Minimum = 50,
@@ -115,6 +122,8 @@ public class MainForm : Form
     private List<int> ids = new();
 
     private List<BeatmapSetInfo> missingMaps = new();
+
+    private List<string> pendingImportFiles = new();
 
     private ApiConfig? config;
 
@@ -268,6 +277,8 @@ public class MainForm : Form
         apiPanel.Controls.Add(
             downloadMissingBtn);
 
+        apiPanel.Controls.Add(
+            importNewSongsBtn);
 
         apiPanel.Controls.Add(
             apiStatus);
@@ -328,6 +339,11 @@ public class MainForm : Form
                 await DownloadMissingAsync();
             };
 
+        importNewSongsBtn.Click +=
+            async (_, _) =>
+            {
+                await ImportNewSongsAsync();
+            };
 
     }
 
@@ -639,25 +655,9 @@ public class MainForm : Form
         if (missingMaps.Count == 0)
             return;
 
-        using var dlg =
-            new FolderBrowserDialog
-            {
-                Description =
-                    "Select where to download " +
-                    "the new .osz files.",
-
-                UseDescriptionForTitle =
-                    true
-            };
-
-        if (dlg.ShowDialog(this) !=
-            DialogResult.OK)
-        {
-            return;
-        }
-
         string destination =
-            dlg.SelectedPath;
+            Environment.ExpandEnvironmentVariables(
+                config.SongsPath);
 
         int threads =
             (int)downloadThreads.Value;
@@ -700,6 +700,10 @@ public class MainForm : Form
                         config,
                         progress);
 
+            pendingImportFiles = result.DownloadedFiles;
+            importNewSongsBtn.Enabled =
+                pendingImportFiles.Count > 0;
+
             status.Text =
                 $"Finished. " +
                 $"Downloaded {result.Downloaded:N0}, " +
@@ -741,6 +745,147 @@ public class MainForm : Form
             downloadMissingBtn.Enabled =
                 missingMaps.Count > 0;
 
+            importNewSongsBtn.Enabled =
+                pendingImportFiles.Count > 0;
+
+        }
+    }
+
+    // ============================================================
+    // IMPORT NEW SONGS
+    // ============================================================
+
+    private async Task ImportNewSongsAsync()
+    {
+        if (config == null)
+        {
+            try
+            {
+                config = ConfigService.LoadConfig();
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(
+                    this,
+                    e.Message,
+                    "Configuration Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+        }
+
+        if (pendingImportFiles.Count == 0)
+            return;
+
+        string exePath =
+            Environment.ExpandEnvironmentVariables(
+                config.OsuLazerExe);
+
+        if (!File.Exists(exePath))
+        {
+            MessageBox.Show(
+                this,
+                $"osu!lazer executable was not found:\n{exePath}",
+                "Import Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        var files =
+            pendingImportFiles
+                .Where(File.Exists)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+        if (files.Count == 0)
+        {
+            pendingImportFiles.Clear();
+            importNewSongsBtn.Enabled = false;
+            return;
+        }
+
+        browseBtn.Enabled = false;
+        loadBtn.Enabled = false;
+        findMissingBtn.Enabled = false;
+        downloadMissingBtn.Enabled = false;
+        importNewSongsBtn.Enabled = false;
+
+        const int batchSize = 50;
+        int imported = 0;
+
+        try
+        {
+            for (int offset = 0; offset < files.Count; offset += batchSize)
+            {
+                var batch =
+                    files.Skip(offset).Take(batchSize).ToList();
+
+                int batchNumber =
+                    offset / batchSize + 1;
+
+                status.Text =
+                    $"Importing batch {batchNumber} " +
+                    $"({batch.Count:N0} files)...";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    UseShellExecute = false
+                };
+
+                foreach (string file in batch)
+                    startInfo.ArgumentList.Add(file);
+
+                using Process? process =
+                    Process.Start(startInfo);
+
+                if (process == null)
+                    throw new InvalidOperationException(
+                        $"Failed to start osu!lazer for batch {batchNumber}.");
+
+                imported += batch.Count;
+
+                apiStatus.Text =
+                    $"{imported:N0}/{files.Count:N0}";
+
+                if (offset + batch.Count < files.Count)
+                    await Task.Delay(500);
+            }
+
+            pendingImportFiles.Clear();
+
+            status.Text =
+                $"Imported {imported:N0} new songs into osu!lazer.";
+
+            MessageBox.Show(
+                this,
+                $"Imported: {imported:N0}",
+                "Import complete",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception e)
+        {
+            status.Text =
+                $"Import stopped after {imported:N0} file(s).";
+
+            MessageBox.Show(
+                this,
+                e.Message,
+                "Import failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            browseBtn.Enabled = true;
+            loadBtn.Enabled = true;
+            findMissingBtn.Enabled = ids.Count > 0;
+            downloadMissingBtn.Enabled = missingMaps.Count > 0;
+            importNewSongsBtn.Enabled =
+                pendingImportFiles.Count > 0;
         }
     }
 

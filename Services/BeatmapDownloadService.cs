@@ -27,6 +27,7 @@ public sealed class BeatmapDownloadService
         int downloaded = 0;
         int skipped = 0;
         int failed = 0;
+        var downloadedFiles = new System.Collections.Concurrent.ConcurrentBag<string>();
 
         using var semaphore =
             new SemaphoreSlim(maxParallel);
@@ -60,6 +61,8 @@ public sealed class BeatmapDownloadService
                         Interlocked.Increment(
                                 ref completed);
 
+                        downloadedFiles.Add(destinationFile);
+
                         return;
                     }
 
@@ -73,6 +76,8 @@ public sealed class BeatmapDownloadService
 
                         Interlocked.Increment(
                             ref downloaded);
+
+                        downloadedFiles.Add(destinationFile);
                     }
                     catch (Exception ex)
                     {
@@ -109,6 +114,7 @@ public sealed class BeatmapDownloadService
         return new DownloadResult(
             downloaded,
             skipped,
-            failed);
+            failed,
+            downloadedFiles.ToList());
     }
 }

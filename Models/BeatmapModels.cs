@@ -7,6 +7,7 @@ public record ApiConfig(
     int FetchCount,
     int DownloadThreads,
     string SongsPath,
+    string OsuLazerExe,
     List<string> DownloadMirrors,
     Dictionary<string, string> Servers);
 
@@ -25,4 +26,5 @@ public record DownloadProgress(
 public record DownloadResult(
     int Downloaded,
     int Skipped,
-    int Failed);
+    int Failed,
+    List<string> DownloadedFiles);

@@ -4,3 +4,5 @@ config.yaml
 client.realm
 FodyWeavers.xml
 FodyWeavers.xsd
+
+songs/
